@@ -1,0 +1,4 @@
+[workspace]
+resolover = "3"
+
+members = ["core"]
