@@ -3,7 +3,7 @@ use std::env;
 
 pub struct Config {
     pub yellowstone_grpc_endpoint: String,
-    pub yellowstone_grpc_token: String,
+    pub yellowstone_grpc_token: Option<String>,
 }
 
 impl Config {
@@ -11,7 +11,7 @@ impl Config {
         Ok(Self {
             yellowstone_grpc_endpoint: env::var("YELLOWSTONE_GRPC_ENDPOINT")
                 .unwrap_or("".to_string()),
-            yellowstone_grpc_token: env::var("YELLOWSTONE_GRPC_TOKEN").unwrap_or("".to_string()),
+            yellowstone_grpc_token: env::var("YELLOWSTONE_GRPC_TOKEN").ok(),
         })
     }
 }

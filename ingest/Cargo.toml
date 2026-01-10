@@ -1,5 +1,5 @@
 [package]
-name = "core"
+name = "ingest"
 version = "0.1.0"
 edition = "2024"
 
@@ -17,9 +17,5 @@ clickhouse = "0.14.1"
 redis = "1.0.2"
 serde = "1.0.2"
 serde_json = "1.0.143"
-rustls = { version = "0.23", features = ["aws-lc-rs"] }
-solana-sdk = "3.0.0"
-dotenv = "0.15.0"
-ingest = { path = "../ingest" }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

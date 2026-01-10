@@ -1,12 +1,15 @@
 mod config;
-use bs58;
-use futures::{SinkExt, StreamExt};
-use std::collections::HashMap;
-use tokio::time::{Duration, sleep};
-use yellowstone_grpc_client::{ClientTlsConfig, GeyserGrpcClient};
-use yellowstone_grpc_proto::prelude::*;
-
 use crate::config::Config;
+use futures::SinkExt;
+use ingest::{subscriptions::Subscriptions, yellowstone_client::YellowstoneClient};
+
+use tracing::info;
+
+fn setup_logging() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+}
 
 fn setup_rustls() {
     rustls::crypto::aws_lc_rs::default_provider()
@@ -17,106 +20,28 @@ fn setup_rustls() {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     setup_rustls();
+    setup_logging();
 
     dotenv::dotenv().ok();
-
-    println!("Starting stream of solana data");
 
     let config = Config::load_config()?;
 
     let endpoint = config.yellowstone_grpc_endpoint;
     let token = config.yellowstone_grpc_token;
 
-    let builder = GeyserGrpcClient::build_from_shared(endpoint.to_string())?
-        .tls_config(ClientTlsConfig::new().with_native_roots())?
-        .x_token(Some(token))?;
+    let mut yellowstone_client = YellowstoneClient::new(endpoint, token).await?;
 
-    let mut client = builder.connect().await?;
+    let (mut yellowstone_tx, yellowstone_rx) =
+        YellowstoneClient::subscribe(&mut yellowstone_client).await?;
 
-    // USDC mint account
-    let usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    let subscription_request = Subscriptions::create_subscriptions();
 
-    let mut accounts = HashMap::new();
-    accounts.insert(
-        "usdc_mint".to_string(),
-        SubscribeRequestFilterAccounts {
-            nonempty_txn_signature: None,
-            account: vec![usdc_mint.to_string()],
-            owner: vec![],
-            filters: vec![],
-        },
-    );
+    yellowstone_tx.send(subscription_request).await?;
 
-    let (mut tx, mut rx) = client.subscribe().await?;
-    let subscribe_request = SubscribeRequest {
-        accounts,
-        transactions: HashMap::new(),
-        blocks: HashMap::new(),
-        blocks_meta: HashMap::new(),
-        entry: HashMap::new(),
-        commitment: Some(CommitmentLevel::Confirmed as i32),
-        accounts_data_slice: vec![],
-        ping: None,
-        from_slot: None,
-        slots: HashMap::new(),
-        transactions_status: HashMap::new(),
-    };
+    info!("Connected!...");
+    info!("Subscribed to Dexs. Starting data stream...");
 
-    tx.send(subscribe_request).await?;
-
-    println!("Connected! Monitoring USDC mint account...");
-
-    while let Some(message) = rx.next().await {
-        match message {
-            Ok(msg) => {
-                if let Some(account) = msg.update_oneof {
-                    match account {
-                        subscribe_update::UpdateOneof::Account(account_update) => {
-                            println!("\n📊 Account Update:");
-                            println!(
-                                "  Account: {}",
-                                account_update
-                                    .account
-                                    .as_ref()
-                                    .map(|a| bs58::encode(&a.pubkey).into_string())
-                                    .unwrap_or("N/A".to_string())
-                            );
-                            println!(
-                                "  Owner: {}",
-                                account_update
-                                    .account
-                                    .as_ref()
-                                    .map(|a| bs58::encode(&a.owner).into_string())
-                                    .unwrap_or("N/A".to_string())
-                            );
-                            println!(
-                                "  Lamports: {}",
-                                account_update
-                                    .account
-                                    .as_ref()
-                                    .map(|a| a.lamports)
-                                    .unwrap_or(0)
-                            );
-                            println!("  Slot: {}", account_update.slot);
-                            println!(
-                                "  Data Length: {}",
-                                account_update
-                                    .account
-                                    .as_ref()
-                                    .map(|a| a.data.len())
-                                    .unwrap_or(0)
-                            );
-                        }
-                        _ => {} // Handle other update types as needed
-                    }
-                }
-            }
-            Err(error) => {
-                eprintln!(" Stream error: {}", error);
-                sleep(Duration::from_secs(1)).await;
-            }
-        }
-    }
+    YellowstoneClient::handle_grpc_stream(yellowstone_rx).await?;
 
     Ok(())
 }

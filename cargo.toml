@@ -1,4 +1,4 @@
 [workspace]
 resolover = "3"
 
-members = ["core"]
+members = ["core", "ingest"]
