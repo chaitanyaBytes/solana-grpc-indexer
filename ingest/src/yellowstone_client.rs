@@ -2,6 +2,7 @@ use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
 use futures::{Sink, SinkExt, Stream, StreamExt, channel::mpsc};
+use tokio::sync::mpsc::Sender;
 use tonic::Status;
 use tracing::{error, info, warn};
 use yellowstone_grpc_client::{
@@ -14,7 +15,7 @@ use yellowstone_grpc_proto::geyser::{
 
 use crate::{
     subscriptions::Subscriptions,
-    types::{SolanaAccount, SolanaTransaction, TransactionInstruction},
+    types::{IndexEvent, SolanaAccount, SolanaTransaction, TransactionInstruction},
 };
 
 pub struct YellowstoneClient {}
@@ -44,11 +45,12 @@ impl YellowstoneClient {
 
     pub async fn handle_grpc_stream(
         mut stream: impl Stream<Item = Result<SubscribeUpdate, Status>> + Unpin,
+        event_tx: &Sender<IndexEvent>,
     ) -> Result<()> {
         while let Some(message) = stream.next().await {
             match message {
                 Ok(update) => {
-                    Self::process_update(update).await?;
+                    Self::process_update(update, &event_tx).await?;
                 }
                 Err(error) => {
                     error!("Stream Error: {}", error);
@@ -61,7 +63,11 @@ impl YellowstoneClient {
         Ok(())
     }
 
-    pub async fn connect_and_run(endpoint: &str, token: &Option<String>) -> anyhow::Result<()> {
+    pub async fn connect_and_run(
+        endpoint: &str,
+        token: &Option<String>,
+        event_tx: &Sender<IndexEvent>,
+    ) -> anyhow::Result<()> {
         let mut yellowstone_client = Self::new(endpoint, token).await?;
 
         let (mut yellowstone_tx, yellowstone_rx) = Self::subscribe(&mut yellowstone_client).await?;
@@ -73,51 +79,67 @@ impl YellowstoneClient {
         info!("Connected!...");
         info!("Subscribed to Dexs. Starting data stream...");
 
-        Self::handle_grpc_stream(yellowstone_rx).await?;
+        Self::handle_grpc_stream(yellowstone_rx, &event_tx).await?;
 
         Ok(())
     }
 
-    pub async fn process_update(update: SubscribeUpdate) -> Result<()> {
+    pub async fn process_update(
+        update: SubscribeUpdate,
+        event_tx: &Sender<IndexEvent>,
+    ) -> Result<()> {
         match update.update_oneof {
             Some(subscribe_update::UpdateOneof::Account(account_update)) => {
-                Self::handle_account_update(account_update).await?;
+                Self::handle_account_update(account_update, &event_tx).await?;
             }
             Some(subscribe_update::UpdateOneof::Transaction(transaction_update)) => {
-                Self::handle_transaction_update(transaction_update).await?;
+                Self::handle_transaction_update(transaction_update, &event_tx).await?;
             }
             Some(subscribe_update::UpdateOneof::Slot(slot_update)) => {
-                Self::handle_slot_update(slot_update).await?;
+                Self::handle_slot_update(slot_update, &event_tx).await?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    pub async fn handle_account_update(account_update: SubscribeUpdateAccount) -> Result<()> {
+    pub async fn handle_account_update(
+        account_update: SubscribeUpdateAccount,
+        event_tx: &Sender<IndexEvent>,
+    ) -> Result<()> {
         if let Some(account) = Self::into_solana_account(account_update) {
             info!(
                 "Account: pubkey={}, lamports={}, owner={}, executable={}",
                 account.pubkey, account.lamports, account.owner, account.executable
             );
+
+            event_tx.send(IndexEvent::Account(account)).await?;
         }
         Ok(())
     }
 
     pub async fn handle_transaction_update(
         transaction_update: SubscribeUpdateTransaction,
+        event_tx: &Sender<IndexEvent>,
     ) -> Result<()> {
         if let Some(transaction) = Self::into_solana_transaction(transaction_update) {
             info!(
                 "Transaction: signature={}, slot={}, success={}",
                 transaction.signature, transaction.slot, transaction.success
             );
+
+            event_tx.send(IndexEvent::Transaction(transaction)).await?;
         }
         Ok(())
     }
 
-    pub async fn handle_slot_update(slot_update: SubscribeUpdateSlot) -> Result<()> {
+    pub async fn handle_slot_update(
+        slot_update: SubscribeUpdateSlot,
+        event_tx: &Sender<IndexEvent>,
+    ) -> Result<()> {
         info!("Slot: {:?}", slot_update.slot);
+
+        event_tx.send(IndexEvent::Slot(slot_update.slot)).await?;
 
         Ok(())
     }

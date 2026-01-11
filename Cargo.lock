@@ -557,6 +557,7 @@ dependencies = [
  "dotenv",
  "futures",
  "ingest",
+ "processor",
  "redis",
  "rustls",
  "serde",
@@ -1879,6 +1880,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "535d180e0ecab6268a3e718bb9fd44db66bbbc256257165fc699dadf70d16fe7"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "processor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "bs58",
+ "chrono",
+ "clickhouse",
+ "dotenv",
+ "futures",
+ "ingest",
+ "redis",
+ "rustls",
+ "serde",
+ "serde_json",
+ "solana-sdk",
+ "tokio",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
+ "yellowstone-grpc-client",
+ "yellowstone-grpc-proto",
 ]
 
 [[package]]
