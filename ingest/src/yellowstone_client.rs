@@ -1,9 +1,9 @@
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
-use futures::{Sink, Stream, StreamExt, channel::mpsc};
+use futures::{Sink, SinkExt, Stream, StreamExt, channel::mpsc};
 use tonic::Status;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use yellowstone_grpc_client::{
     ClientTlsConfig, GeyserGrpcBuilderError, GeyserGrpcClient, GeyserGrpcClientResult, Interceptor,
 };
@@ -12,18 +12,21 @@ use yellowstone_grpc_proto::geyser::{
     SubscribeUpdateTransaction, subscribe_update,
 };
 
-use crate::types::{SolanaAccount, SolanaTransaction, TransactionInstruction};
+use crate::{
+    subscriptions::Subscriptions,
+    types::{SolanaAccount, SolanaTransaction, TransactionInstruction},
+};
 
 pub struct YellowstoneClient {}
 
 impl YellowstoneClient {
     pub async fn new(
-        endpoint: String,
-        token: Option<String>,
+        endpoint: &str,
+        token: &Option<String>,
     ) -> Result<GeyserGrpcClient<impl Interceptor + Clone>, GeyserGrpcBuilderError> {
         let builder = GeyserGrpcClient::build_from_shared(endpoint.to_string())?
             .tls_config(ClientTlsConfig::new().with_native_roots())?
-            .x_token(token)?;
+            .x_token(token.clone())?;
 
         let client = builder.connect().await?;
 
@@ -49,9 +52,29 @@ impl YellowstoneClient {
                 }
                 Err(error) => {
                     error!("Stream Error: {}", error);
+                    return Err(error.into());
                 }
             }
         }
+
+        warn!("gRPC stream closed by server");
+        Ok(())
+    }
+
+    pub async fn connect_and_run(endpoint: &str, token: &Option<String>) -> anyhow::Result<()> {
+        let mut yellowstone_client = Self::new(endpoint, token).await?;
+
+        let (mut yellowstone_tx, yellowstone_rx) = Self::subscribe(&mut yellowstone_client).await?;
+
+        let subscriptions = Subscriptions::create_subscriptions();
+
+        yellowstone_tx.send(subscriptions).await?;
+
+        info!("Connected!...");
+        info!("Subscribed to Dexs. Starting data stream...");
+
+        Self::handle_grpc_stream(yellowstone_rx).await?;
+
         Ok(())
     }
 

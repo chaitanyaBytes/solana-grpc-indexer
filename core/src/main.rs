@@ -1,9 +1,10 @@
 mod config;
-use crate::config::Config;
-use futures::SinkExt;
-use ingest::{subscriptions::Subscriptions, yellowstone_client::YellowstoneClient};
+use std::time::Duration;
 
-use tracing::info;
+use crate::config::Config;
+use ingest::yellowstone_client::YellowstoneClient;
+
+use tracing::{error, info, warn};
 
 fn setup_logging() {
     tracing_subscriber::fmt()
@@ -29,19 +30,28 @@ async fn main() -> anyhow::Result<()> {
     let endpoint = config.yellowstone_grpc_endpoint;
     let token = config.yellowstone_grpc_token;
 
-    let mut yellowstone_client = YellowstoneClient::new(endpoint, token).await?;
+    tokio::spawn(run_yellowstone_with_reconnect(endpoint, token));
 
-    let (mut yellowstone_tx, yellowstone_rx) =
-        YellowstoneClient::subscribe(&mut yellowstone_client).await?;
-
-    let subscription_request = Subscriptions::create_subscriptions();
-
-    yellowstone_tx.send(subscription_request).await?;
-
-    info!("Connected!...");
-    info!("Subscribed to Dexs. Starting data stream...");
-
-    YellowstoneClient::handle_grpc_stream(yellowstone_rx).await?;
-
+    futures::future::pending::<()>().await; // keeps main alive without using cpu
     Ok(())
+}
+
+async fn run_yellowstone_with_reconnect(endpoint: String, token: Option<String>) {
+    const MAX_BACKOFF: u64 = 60;
+    let mut backoff = 1u64;
+
+    loop {
+        match YellowstoneClient::connect_and_run(&endpoint, &token).await {
+            Ok(_) => {
+                warn!("Stream ended normally, reconnecting…");
+            }
+            Err(e) => {
+                error!("Stream error: {:?}", e);
+            }
+        }
+
+        info!("Reconnecting in {}s", backoff);
+        tokio::time::sleep(Duration::from_secs(backoff)).await;
+        backoff = (backoff * 2).min(MAX_BACKOFF);
+    }
 }
