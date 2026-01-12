@@ -19,8 +19,19 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub async fn new(clickhouse_url: &str, db_name: &str) -> Result<Self> {
-        let clickhouse = ClickhouseClient::new(clickhouse_url, db_name).await?;
+    pub async fn new(
+        clickhouse_url: &str,
+        clickhouse_user: &str,
+        clickhouse_password: &str,
+        clickhouse_db: &str,
+    ) -> Result<Self> {
+        let clickhouse = ClickhouseClient::new(
+            clickhouse_url,
+            clickhouse_user,
+            clickhouse_password,
+            clickhouse_db,
+        )
+        .await?;
 
         Ok(Self {
             clickhouse,

@@ -33,7 +33,9 @@ async fn main() -> anyhow::Result<()> {
     let endpoint = config.yellowstone_grpc_endpoint;
     let token = config.yellowstone_grpc_token;
     let clickhouse_url = config.clickhouse_url;
-    let db_name = config.db_name;
+    let clickhouse_db = config.clickhouse_db;
+    let clickhouse_user = config.clickhouse_user;
+    let clickhouse_password = config.clickhouse_password;
 
     let (event_tx, event_rx) = tokio::sync::mpsc::channel::<IndexEvent>(10_000);
 
@@ -44,7 +46,15 @@ async fn main() -> anyhow::Result<()> {
     });
 
     tokio::spawn(async move {
-        if let Err(e) = run_processor(event_rx, clickhouse_url, db_name).await {
+        if let Err(e) = run_processor(
+            event_rx,
+            clickhouse_url,
+            clickhouse_user,
+            clickhouse_password,
+            clickhouse_db,
+        )
+        .await
+        {
             error!("Processor error: {}", e);
         }
     });
@@ -80,9 +90,18 @@ async fn run_yellowstone_with_reconnect(
 pub async fn run_processor(
     mut event_rx: Receiver<IndexEvent>,
     clickhouse_url: String,
-    db_name: String,
+    clickhouse_user: String,
+    clickhouse_password: String,
+    clickhouse_db: String,
 ) -> anyhow::Result<()> {
-    let mut processor = Processor::new(&clickhouse_url, &db_name).await?;
+    let mut processor = Processor::new(
+        &clickhouse_url,
+        &clickhouse_user,
+        &clickhouse_password,
+        &clickhouse_db,
+    )
+    .await
+    .expect("Clickhouse init failed");
 
     // Create periodic flush interval
     let flush_interval = processor.flush_interval;

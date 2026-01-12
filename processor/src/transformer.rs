@@ -17,7 +17,7 @@ impl Transformer {
             data: account.data.clone(),
             write_version: account.write_version,
             txn_signature: account.txn_signature.clone(),
-            timestamp: account.timestamp,
+            timestamp: Utc::now().timestamp_millis(),
         })
     }
 
@@ -26,11 +26,11 @@ impl Transformer {
             signature: tx.signature.clone(),
             slot: tx.slot,
             is_vote: tx.is_vote,
-            index: tx.index,
+            tx_index: tx.index,
             success: tx.success,
             fee: tx.fee,
             compute_units_consumed: tx.compute_units_consumed,
-            timestamp: Utc::now(),
+            timestamp: Utc::now().timestamp_millis(),
             pre_balances: serde_json::to_string(&tx.pre_balances)?,
             post_balances: serde_json::to_string(&tx.post_balances)?,
             log_messages: serde_json::to_string(&tx.log_messages)?,
@@ -42,7 +42,7 @@ impl Transformer {
     pub fn transform_slot(slot: u64) -> ClickHouseSlot {
         ClickHouseSlot {
             slot,
-            timestamp: Utc::now(),
+            timestamp: Utc::now().timestamp_millis(),
         }
     }
 }

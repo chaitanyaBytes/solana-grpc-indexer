@@ -9,8 +9,17 @@ pub struct ClickhouseClient {
 }
 
 impl ClickhouseClient {
-    pub async fn new(url: &str, database: &str) -> Result<Self> {
-        let client = Client::default().with_url(url).with_database(database);
+    pub async fn new(
+        clickhouse_url: &str,
+        clickhouse_user: &str,
+        clickhouse_password: &str,
+        clickhouse_db: &str,
+    ) -> Result<Self> {
+        let client = Client::default()
+            .with_url(clickhouse_url)
+            .with_database(clickhouse_db)
+            .with_user(clickhouse_user)
+            .with_password(clickhouse_password);
 
         let clichouse_client = Self { client };
 
@@ -25,22 +34,23 @@ impl ClickhouseClient {
             .query(
                 r#"
                 CREATE TABLE IF NOT EXISTS transactions (
-                    signature String,
-                    slot UInt64,
-                    is_vote UInt8,
-                    index UInt64,
-                    success UInt8,
-                    fee Nullable(UInt64),
-                    compute_units_consumed Nullable(UInt64),
-                    timestamp DateTime64(3),
-                    pre_balances String,
-                    post_balances String,
-                    log_messages String,
-                    account_keys String,
-                    instructions String
-                ) ENGINE = MergeTree()
-                ORDER BY (slot, index)
-                PARTITION BY toYYYYMM(timestamp)
+                signature String,
+                slot UInt64,
+                is_vote UInt8,
+                tx_index UInt64,
+                success UInt8,
+                fee Nullable(UInt64),
+                compute_units_consumed Nullable(UInt64),
+                timestamp DateTime64(3),
+                pre_balances String,
+                post_balances String,
+                log_messages String,
+                account_keys String,
+                instructions String
+                )
+                ENGINE = MergeTree()
+                PARTITION BY toYYYYMM(toDateTime(timestamp))
+                ORDER BY (slot, tx_index);
             "#,
             )
             .execute()
@@ -62,7 +72,7 @@ impl ClickhouseClient {
                     timestamp DateTime64(3)
                 ) ENGINE = MergeTree()
                 ORDER BY (pubkey, write_version)
-                PARTITION BY toYYYYMM(timestamp)
+                PARTITION BY toYYYYMM(toDateTime(timestamp))
             "#,
             )
             .execute()

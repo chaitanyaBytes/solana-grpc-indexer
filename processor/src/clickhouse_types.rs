@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use clickhouse::Row;
 use serde::{Deserialize, Serialize};
 
@@ -7,11 +6,11 @@ pub struct ClickHouseTransaction {
     pub signature: String,
     pub slot: u64,
     pub is_vote: bool,
-    pub index: u64,
+    pub tx_index: u64,
     pub success: bool,
     pub fee: Option<u64>,
     pub compute_units_consumed: Option<u64>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: i64,
     // JSON fields for complex data
     pub pre_balances: String,  // JSON array
     pub post_balances: String, // JSON array
@@ -30,11 +29,11 @@ pub struct ClickHouseAccount {
     pub data: String, // Base64 encoded
     pub write_version: u64,
     pub txn_signature: Option<String>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: i64,
 }
 
 #[derive(Row, Debug, Clone, Serialize, Deserialize)]
 pub struct ClickHouseSlot {
     pub slot: u64,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: i64,
 }
