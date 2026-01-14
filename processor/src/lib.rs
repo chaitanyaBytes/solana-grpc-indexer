@@ -1,5 +1,6 @@
 pub mod clickhouse;
 pub mod clickhouse_types;
+pub mod query;
 pub mod transformer;
 pub mod worker;
 

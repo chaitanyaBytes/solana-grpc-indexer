@@ -1,5 +1,6 @@
 use anyhow::{Ok, Result};
-use clickhouse::Client;
+use clickhouse::{Client, RowOwned, RowRead};
+use serde::Deserialize;
 use tracing::info;
 
 use crate::clickhouse_types::{ClickHouseAccount, ClickHouseSlot, ClickHouseTransaction};
@@ -177,5 +178,29 @@ impl ClickhouseClient {
         inserter.end().await?;
 
         Ok(())
+    }
+
+    /// Execute a SELECT query and return results as typed JSON
+    pub async fn query_all_typed<T>(&self, query: &str) -> Result<serde_json::Value>
+    where
+        T: RowOwned + RowRead + serde::Serialize,
+    {
+        let rows: Vec<T> = self.client.query(query).fetch_all().await?;
+        Ok(serde_json::json!(rows))
+    }
+
+    /// Execute a SELECT query and return results as raw JSON
+    pub async fn query_json_raw<T>(&self, query: &str) -> Result<String> {
+        let chunks = self.client.query(query).fetch_all::<String>().await?;
+        Ok(chunks.join(""))
+    }
+
+    /// Execute a query that returns a single value
+    pub async fn query_single<T>(&self, query: &str) -> Result<Option<T>>
+    where
+        T: RowOwned + for<'a> Deserialize<'a>,
+    {
+        let mut cursor = self.client.query(query).fetch::<T>()?;
+        Ok(cursor.next().await?)
     }
 }
